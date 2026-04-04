@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NINE TEN TWO // Interactive Sequencer</title>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --trace-idle: #222;
+            --trace-hover: #555;
+            --trace-active: #fff;
+            --glow-color: rgba(255, 255, 255, 0.8);
+            --accent: #0ff;
+        }
+        body {
+            margin: 0; padding: 0;
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at center, #1a1a1a 0%, #000 100%);
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; overflow: hidden; user-select: none;
+        }
+        header { text-align: center; margin-bottom: -0.3rem; letter-spacing: 4px; }
+        h1 { margin: 0; font-size: 2rem; font-weight: normal; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
+        p { margin: 10px 0 0 0; font-size: 0.9rem; color: #888; }
+        #app-container { position: relative; display: flex; flex-direction: column; align-items: center; }
+        svg { width: 80vmin; height: 80vmin; max-width: 500px; max-height: 500px; overflow: visible; }
+        .trace {
+            fill: var(--trace-idle);
+            cursor: pointer;
+            transition: fill 0.6s ease-out, filter 0.6s ease-out;
+        }
+        @media (hover: hover) { .trace:hover { fill: var(--trace-hover); } }
+        .trace.active {
+            fill: var(--trace-active);
+            filter: drop-shadow(0 0 8px var(--glow-color)) drop-shadow(0 0 20px var(--accent));
+            transition: none;
+        }
+        .controls { margin-top: -1.5rem; display: flex; gap: 20px; align-items: center; }
+        button {
+            background: transparent; color: white; border: 1px solid #444;
+            padding: 10px 20px; font-family: inherit; font-size: 1rem;
+            cursor: pointer; letter-spacing: 2px; transition: all 0.2s; text-transform: uppercase;
+        }
+        button:hover { background: #222; border-color: #888; box-shadow: 0 0 10px rgba(255,255,255,0.1); }
+        button:active { background: #fff; color: #000; }
+        .status-indicator {
+            width: 10px; height: 10px; border-radius: 50%; background: #333;
+            display: inline-block; margin-right: 10px; transition: background 0.2s, box-shadow 0.2s;
+        }
+        .status-indicator.playing { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+        /* Easter Egg */
+        #egg {
+            position: absolute;
+            left: 15%;
+            top: 25.5%;
+            transform: translate(-50%, -50%);
+            width: 18px;
+            height: 22px;
+            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+            cursor: pointer;
+            z-index: 10;
+            display: none;
+            background: #fff;
+            background-image:
+                /* Horizontal stripes */
+                linear-gradient(transparent 3px, #f44 3px, #f44 5px, transparent 5px,
+                    transparent 8px, #4af 8px, #4af 9.5px, transparent 9.5px,
+                    transparent 13px, #4c4 13px, #4c4 15px, transparent 15px,
+                    transparent 18px, #fa0 18px, #fa0 19px, transparent 19px),
+                /* Polka dots - various colors and sizes */
+                radial-gradient(circle 2.5px at 4px 7px, #f0f, transparent),
+                radial-gradient(circle 1.5px at 13px 4px, #0cf, transparent),
+                radial-gradient(circle 2px at 9px 11px, #ff0, transparent),
+                radial-gradient(circle 1px at 3px 17px, #f80, transparent),
+                radial-gradient(circle 1.5px at 14px 16px, #0f0, transparent),
+                radial-gradient(circle 2px at 7px 20px, #f0f, transparent),
+                radial-gradient(circle 1px at 11px 7px, #0ff, transparent),
+                radial-gradient(circle 2.5px at 5px 12px, #f44, transparent),
+                radial-gradient(circle 1px at 15px 11px, #ff0, transparent),
+                radial-gradient(circle 1.5px at 8px 3px, #4c4, transparent);
+            box-shadow: inset 0 -3px 6px rgba(0,0,0,0.1), inset 0 2px 4px rgba(255,255,255,0.8);
+        }
+        #egg.visible { display: block; }
+        #egg.muted {
+            animation: eggPulse 1.2s ease-in-out infinite;
+        }
+        @keyframes eggPulse {
+            0%, 100% {
+                filter: drop-shadow(0 0 4px #0ff) drop-shadow(0 0 8px #0ff);
+            }
+            50% {
+                filter: drop-shadow(0 0 14px #0ff) drop-shadow(0 0 30px #0ff) drop-shadow(0 0 50px rgba(0,255,255,0.4));
+            }
+        }
+
+        /* Orb trail */
+        .orb {
+            position: fixed;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 12px var(--accent), 0 0 24px var(--accent);
+            pointer-events: none;
+            opacity: 0.8;
+            z-index: 999;
+            transition: opacity 1.2s ease-out, transform 1.2s ease-out;
+        }
+        .orb.fade {
+            opacity: 0;
+            transform: scale(0.2);
+        }
+
+        /* Hidden panels */
+        .panel {
+            display: none;
+            width: 80vmin;
+            max-width: 500px;
+            padding: 8px;
+            box-sizing: border-box;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid #222;
+            border-radius: 4px;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            justify-content: center;
+        }
+        .panel.visible { display: flex; }
+        .panel-top { margin-bottom: 4px; }
+        .panel-bottom { margin-top: 4px; }
+
+        .panel-btn {
+            width: 28px;
+            height: 28px;
+            background: var(--trace-idle);
+            border: 1px solid #333;
+            border-radius: 2px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.55rem;
+            font-family: inherit;
+            color: #666;
+            letter-spacing: 0;
+            padding: 0;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+        .panel-btn:hover { background: var(--trace-hover); color: #aaa; border-color: #555; }
+        .panel-btn.on {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+            box-shadow: 0 0 6px var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <!-- Top panel (hidden by default) -->
+    <div id="panel-top" class="panel panel-top">
+        <div id="btn-full" class="panel-btn" title="Full notes across octaves (chromatic 12-TET)">12</div>
+        <div id="btn-cluster" class="panel-btn" title="Tone clusters — each step plays 3 adjacent notes">TC</div>
+        <div id="btn-oct-up" class="panel-btn" title="Shift everything up one octave">+8</div>
+        <div id="btn-snare" class="panel-btn" title="Snare on 1 and 5">SN</div>
+        <div id="btn-hihat" class="panel-btn" title="Hi-hat on 2,4,7,8">HH</div>
+        <div id="btn-shift-top" class="panel-btn" title="Shift snare+hihat pattern">S0</div>
+        <div id="btn-tempo-up" class="panel-btn" title="Increase tempo">T0</div>
+        <div id="btn-attack" class="panel-btn" title="Synth attack">A0</div>
+        <div id="btn-sustain" class="panel-btn" title="Synth sustain">S0</div>
+    </div>
+
+    <header>
+        <h1>NINE TEN TWO</h1>
+        <p>31-TET GEOMETRIC SYNTHESIZER</p>
+    </header>
+    <div id="app-container">
+        <!--
+          NO clipPath. Each rectangle IS a letter wall segment.
+          All coordinates from pixel analysis of the PNG.
+          Rectangles overlap at corners where walls meet.
+
+          N1: top bar x=90-190 y=135-156, left wall x=90-110 y=135-234, right wall x=170-190 y=135-234
+          I:  bar x=209-229 y=135-234
+          N2: top bar x=248-349 y=135-156, left wall x=248-269 y=135-234, right wall x=328-349 y=135-234
+          E1: top bar x=369-469 y=135-156, spine x=369-389 y=135-234, mid bar x=369-450 y=175-196, bottom bar x=369-469 y=215-235
+          T:  top bar x=90-190 y=235-256, stem x=130-151 y=235-335
+          E2: top bar x=209-309 y=235-256, spine x=209-229 y=235-335, mid bar x=209-289 y=275-296, bottom bar x=209-309 y=315-335
+          N3: top bar x=328-429 y=235-256, left wall x=328-349 y=235-335, right wall x=408-429 y=235-335
+          T2: top bar x=90-190 y=335-356, stem x=130-151 y=335-434
+          W:  left x=209-229 y=335-434, mid x=269-289 y=335-434, right x=328-349 y=335-434, bottom bar x=209-349 y=415-434
+          O:  top x=369-469 y=335-356, bottom x=369-469 y=415-434, left x=369-389 y=335-434, right x=449-469 y=335-434
+          O dot: x=408-429 y=375-395
+        -->
+        <!-- Hidden click zone over N1 counter (black square inside N1) -->
+        <div id="egg-zone" style="position:absolute;left:10%;top:18%;width:10%;height:18%;z-index:5;cursor:default;"></div>
+
+        <!-- Easter Egg - hidden in center of first N -->
+        <div id="egg"></div>
+
+        <svg viewBox="80 125 400 320" id="synth-svg">
+
+          <!-- r-1: N1 top bar -->
+          <rect id="r-1"  class="trace" x="90"  y="135" width="101" height="21" />
+          <!-- r-2: N1 left wall + right wall (they overlap with top bar) -->
+          <rect id="r-2"  class="trace" x="90"  y="135" width="21"  height="100" />
+          <!-- r-3: N1 right wall -->
+          <rect id="r-3"  class="trace" x="170" y="135" width="21"  height="100" />
+
+          <!-- r-4: I vertical -->
+          <rect id="r-4"  class="trace" x="209" y="135" width="21"  height="100" />
+
+          <!-- r-5: N2 top bar -->
+          <rect id="r-5"  class="trace" x="248" y="135" width="102" height="21" />
+          <!-- r-6: N2 left wall -->
+          <rect id="r-6"  class="trace" x="248" y="135" width="22"  height="100" />
+          <!-- r-7: N2 right wall = E1 spine (shared, spans into E1) -->
+          <!-- Actually N2-right is x=328-349 and E1-spine is x=369-389, they're separate -->
+          <rect id="r-7"  class="trace" x="328" y="135" width="22"  height="100" />
+
+          <!-- r-8: E1 top bar -->
+          <rect id="r-8"  class="trace" x="369" y="135" width="101" height="21" />
+          <!-- r-9: E1 spine (left wall) -->
+          <rect id="r-9"  class="trace" x="369" y="135" width="21"  height="101" />
+          <!-- r-10: E1 mid bar -->
+          <rect id="r-10" class="trace" x="369" y="175" width="82"  height="21" />
+          <!-- r-11: E1 bottom bar (also serves as row divider into TEN) -->
+          <rect id="r-11" class="trace" x="369" y="215" width="101" height="21" />
+
+          <!-- r-12: T top bar -->
+          <rect id="r-12" class="trace" x="90"  y="235" width="101" height="21" />
+          <!-- r-13: T stem -->
+          <rect id="r-13" class="trace" x="130" y="235" width="22"  height="101" />
+
+          <!-- r-14: E2 top bar -->
+          <rect id="r-14" class="trace" x="209" y="235" width="101" height="21" />
+          <!-- r-15: E2 spine -->
+          <rect id="r-15" class="trace" x="209" y="235" width="21"  height="101" />
+          <!-- r-16: E2 mid bar -->
+          <rect id="r-16" class="trace" x="209" y="275" width="81"  height="21" />
+          <!-- r-17: E2 bottom bar -->
+          <rect id="r-17" class="trace" x="209" y="315" width="101" height="21" />
+
+          <!-- r-18: N3 top bar -->
+          <rect id="r-18" class="trace" x="328" y="235" width="102" height="21" />
+          <!-- r-19: N3 left wall -->
+          <rect id="r-19" class="trace" x="328" y="235" width="22"  height="101" />
+          <!-- r-20: N3 right wall -->
+          <rect id="r-20" class="trace" x="408" y="235" width="22"  height="101" />
+
+          <!-- r-21: T2 top bar -->
+          <rect id="r-21" class="trace" x="90"  y="335" width="101" height="21" />
+          <!-- r-22: T2 stem -->
+          <rect id="r-22" class="trace" x="130" y="335" width="22"  height="100" />
+
+          <!-- r-23: W left vertical -->
+          <rect id="r-23" class="trace" x="209" y="335" width="21"  height="100" />
+          <!-- r-24: W middle vertical -->
+          <rect id="r-24" class="trace" x="269" y="335" width="21"  height="100" />
+          <!-- r-25: W right vertical -->
+          <rect id="r-25" class="trace" x="328" y="335" width="22"  height="100" />
+          <!-- r-26: W bottom bar -->
+          <rect id="r-26" class="trace" x="209" y="415" width="141" height="20" />
+
+          <!-- r-27: O top bar -->
+          <rect id="r-27" class="trace" x="369" y="335" width="102" height="21" />
+          <!-- r-28: O left wall -->
+          <rect id="r-28" class="trace" x="369" y="335" width="21"  height="100" />
+          <!-- r-29: O right wall -->
+          <rect id="r-29" class="trace" x="449" y="335" width="21"  height="100" />
+          <!-- r-30: O bottom bar -->
+          <rect id="r-30" class="trace" x="369" y="415" width="101" height="20" />
+          <!-- r-31: O centered dot -->
+          <rect id="r-31" class="trace" x="408" y="375" width="22"  height="21" />
+
+        </svg>
+
+        <div class="controls">
+            <button id="play-btn"><span class="status-indicator" id="status-dot"></span>SEQ PLAY</button>
+        </div>
+        <p style="margin-top: 0.75rem; margin-bottom: 0.5rem; font-size: 0.8rem;">Click individual traces to play notes.</p>
+    </div>
+
+    <!-- Bottom panel (hidden by default) -->
+    <div id="panel-bottom" class="panel panel-bottom">
+        <div id="btn-double" class="panel-btn" title="Play 2 notes at once">x2</div>
+        <div id="btn-triple" class="panel-btn" title="Play 3 random notes at once, 31 steps, all shapes 3x">x3</div>
+        <div id="btn-oct-down" class="panel-btn" title="Shift everything down one octave">-8</div>
+        <div id="btn-kick" class="panel-btn" title="Kick on 2 and 6">KK</div>
+        <div id="btn-tom" class="panel-btn" title="Tom on 1 and 6">TM</div>
+        <div id="btn-shift-bot" class="panel-btn" title="Shift kick+tom pattern">S0</div>
+        <div id="btn-tempo-down" class="panel-btn" title="Decrease tempo">T0</div>
+        <div id="btn-decay" class="panel-btn" title="Synth decay">D0</div>
+        <div id="btn-release" class="panel-btn" title="Synth release">R0</div>
+        <div id="btn-echo" class="panel-btn" title="Drum echo">EC</div>
+    </div>
+
+    <script>
+        let audioCtx, masterGain;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                masterGain = audioCtx.createGain();
+                masterGain.gain.value = 0.08;
+                masterGain.connect(audioCtx.destination);
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+        // ADSR envelope params (synth only)
+        // Each loops: -2, -1, 0, +1, +2
+        let attackShift = 0, sustainShift = 0, decayShift = 0, releaseShift = 0;
+        const adsrBase = { attack: 0.02, sustain: 0.15, decay: 0.3, release: 0.5 };
+
+        function getADSR() {
+            return {
+                attack:  Math.max(0.005, adsrBase.attack  + attackShift  * 0.02),
+                sustain: Math.max(0.05,  adsrBase.sustain  + sustainShift * 0.1),
+                decay:   Math.max(0.05,  adsrBase.decay    + decayShift   * 0.15),
+                release: Math.max(0.1,   adsrBase.release  + releaseShift * 0.25),
+            };
+        }
+
+        function playNote(frequency, type = 'square') {
+            initAudio();
+            const env = getADSR();
+            const totalDur = env.attack + env.sustain + env.decay + env.release;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+            const t = audioCtx.currentTime;
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.4, t + env.attack);
+            gain.gain.setValueAtTime(0.4, t + env.attack + env.sustain);
+            gain.gain.linearRampToValueAtTime(0.15, t + env.attack + env.sustain + env.decay);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + totalDur);
+            osc.connect(gain); gain.connect(masterGain);
+            osc.start(); osc.stop(t + totalDur);
+        }
+
+        // Drum echo
+        let drumEcho = false;
+        let delayNode = null, feedbackNode = null;
+        function getDrumOutput() {
+            initAudio();
+            if (!drumEcho) return masterGain;
+            if (!delayNode) {
+                delayNode = audioCtx.createDelay();
+                delayNode.delayTime.value = 0.12;
+                feedbackNode = audioCtx.createGain();
+                feedbackNode.gain.value = 0.3;
+                delayNode.connect(feedbackNode);
+                feedbackNode.connect(delayNode);
+                delayNode.connect(masterGain);
+            }
+            return delayNode;
+        }
+        // 31-TET: one octave divided into 31 equal steps (C4 to C5)
+        // Mapped spatially: top-left to top-right, then middle, then bottom
+        const elements = [
+            { id: 'r-1',  freq: 261.63 },   // step 0  - C4
+            { id: 'r-2',  freq: 267.55 },   // step 1
+            { id: 'r-3',  freq: 273.60 },   // step 2
+            { id: 'r-4',  freq: 279.78 },   // step 3
+            { id: 'r-5',  freq: 286.11 },   // step 4
+            { id: 'r-6',  freq: 292.58 },   // step 5
+            { id: 'r-7',  freq: 299.19 },   // step 6
+            { id: 'r-8',  freq: 305.96 },   // step 7
+            { id: 'r-9',  freq: 312.88 },   // step 8
+            { id: 'r-10', freq: 319.95 },   // step 9
+            { id: 'r-11', freq: 327.19 },   // step 10
+            { id: 'r-12', freq: 334.58 },   // step 11
+            { id: 'r-13', freq: 342.15 },   // step 12
+            { id: 'r-14', freq: 349.89 },   // step 13
+            { id: 'r-15', freq: 357.80 },   // step 14
+            { id: 'r-18', freq: 365.89 },   // step 15
+            { id: 'r-19', freq: 374.16 },   // step 16
+            { id: 'r-20', freq: 382.62 },   // step 17
+            { id: 'r-16', freq: 391.27 },   // step 18
+            { id: 'r-17', freq: 400.12 },   // step 19
+            { id: 'r-21', freq: 409.17 },   // step 20
+            { id: 'r-22', freq: 418.42 },   // step 21
+            { id: 'r-23', freq: 427.88 },   // step 22
+            { id: 'r-24', freq: 437.55 },   // step 23
+            { id: 'r-25', freq: 447.45 },   // step 24
+            { id: 'r-27', freq: 457.57 },   // step 25
+            { id: 'r-28', freq: 467.91 },   // step 26
+            { id: 'r-29', freq: 478.49 },   // step 27
+            { id: 'r-31', freq: 489.31 },   // step 28
+            { id: 'r-26', freq: 500.38 },   // step 29
+            { id: 'r-30', freq: 511.69 },   // step 30 - ~C5
+        ];
+        const allElements = elements;
+
+        let activeTimeouts = new Map();
+        function triggerElement(el, freq) {
+            el.classList.remove('active'); void el.offsetWidth; el.classList.add('active');
+            if (activeTimeouts.has(el)) clearTimeout(activeTimeouts.get(el));
+            const tid = setTimeout(() => { el.classList.remove('active'); activeTimeouts.delete(el); }, 100);
+            activeTimeouts.set(el, tid); playNote(freq);
+        }
+        allElements.forEach(data => {
+            const el = document.getElementById(data.id);
+            if (el) {
+                el.addEventListener('mousedown', e => { e.preventDefault(); triggerElement(el, data.freq); });
+                el.addEventListener('touchstart', e => { e.preventDefault(); triggerElement(el, data.freq); });
+            }
+        });
+        // Keyboard mapping: 26 letters + [ ] ; ' . = 31 keys
+        const keyMap = {
+            'q':'r-1','w':'r-2','e':'r-3','r':'r-4','t':'r-5','y':'r-6','u':'r-7',
+            'i':'r-8','o':'r-9','p':'r-10','[':'r-11',
+            'a':'r-12','s':'r-13','d':'r-14','f':'r-15','g':'r-16','h':'r-17',
+            'j':'r-18','k':'r-19','l':'r-20',';':'r-21',']':'r-22',
+            'z':'r-23','x':'r-24','c':'r-25','v':'r-26','b':'r-27',
+            'n':'r-28','m':'r-29',"'":'r-30',',':'r-31'
+        };
+        const keysDown = new Set();
+        document.addEventListener('keydown', e => {
+            if (e.repeat) return;
+            const key = e.key.toLowerCase();
+            if (keyMap[key] && !keysDown.has(key)) {
+                keysDown.add(key);
+                const data = allElements.find(el => el.id === keyMap[key]);
+                const el = document.getElementById(keyMap[key]);
+                if (el && data) triggerElement(el, data.freq);
+            }
+        });
+        document.addEventListener('keyup', e => {
+            keysDown.delete(e.key.toLowerCase());
+        });
+
+        let isPlaying = false, sequenceInterval;
+        const playBtn = document.getElementById('play-btn');
+        const statusDot = document.getElementById('status-dot');
+
+        function shuffle(arr) {
+            const a = [...arr];
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        let sequenceOrder = [];
+        let tripleSequence = [];
+        let step = 0;
+        let beatCount = 0; // 0-7 cycling for percussion pattern
+
+        function sequencerTick() {
+            // Percussion on 4/8 pattern with shift offsets
+            const beat = beatCount % 8;
+            const ts = topShift;
+            const bs = botShift;
+            if (snareMode && (beat === (0+ts)%8 || beat === (4+ts)%8)) playSnare();
+            if (hihatMode && (beat === (1+ts)%8 || beat === (3+ts)%8 || beat === (6+ts)%8 || beat === (7+ts)%8)) playHihat();
+            if (kickMode && (beat === (1+bs)%8 || beat === (5+bs)%8)) playKick();
+            if (tomMode && (beat === (0+bs)%8 || beat === (5+bs)%8)) playTom();
+            beatCount++;
+
+            if (tripleMode) {
+                const group = tripleSequence[step];
+                group.forEach(data => {
+                    const el = document.getElementById(data.id);
+                    if (el && data) triggerElement(el, data.freq);
+                });
+                step++;
+                if (step >= tripleSequence.length) {
+                    const pool = shuffle([...allElements, ...allElements, ...allElements]);
+                    tripleSequence = [];
+                    for (let i = 0; i < 31; i++) {
+                        tripleSequence.push([pool[i*3], pool[i*3+1], pool[i*3+2]]);
+                    }
+                    step = 0;
+                }
+            } else {
+                const data = sequenceOrder[step];
+                const el = document.getElementById(data.id);
+                if (el && data) triggerElement(el, data.freq);
+                step++;
+                if (step >= sequenceOrder.length) {
+                    sequenceOrder = shuffle(allElements);
+                    step = 0;
+                }
+            }
+        }
+
+        function toggleSequence() {
+            if (isPlaying) {
+                clearInterval(sequenceInterval); isPlaying = false;
+                statusDot.classList.remove('playing');
+                playBtn.innerHTML = '<span class="status-indicator" id="status-dot"></span>SEQ PLAY';
+            } else {
+                initAudio(); isPlaying = true;
+                statusDot.classList.add('playing');
+                playBtn.innerHTML = '<span class="status-indicator playing" id="status-dot"></span>STOP';
+                // Build sequence based on mode
+                step = 0;
+                if (tripleMode) {
+                    // 31 steps, 3 shapes per step, every shape appears exactly 3x
+                    const pool = shuffle([...allElements, ...allElements, ...allElements]); // 93 items
+                    tripleSequence = [];
+                    for (let i = 0; i < 31; i++) {
+                        tripleSequence.push([pool[i*3], pool[i*3+1], pool[i*3+2]]);
+                    }
+                } else {
+                    sequenceOrder = shuffle(allElements);
+                }
+                beatCount = 0;
+                sequenceInterval = setInterval(sequencerTick, tempo);
+            }
+        }
+        playBtn.addEventListener('click', toggleSequence);
+        document.body.addEventListener('click', initAudio, { once: true });
+        document.body.addEventListener('touchstart', initAudio, { once: true });
+
+        // --- Panel toggle: right-click or long-press ---
+        const panelTop = document.getElementById('panel-top');
+        const panelBottom = document.getElementById('panel-bottom');
+
+        function togglePanels() {
+            panelTop.classList.toggle('visible');
+            panelBottom.classList.toggle('visible');
+        }
+
+        // Right-click
+        document.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            togglePanels();
+        });
+
+        // Long-press (500ms)
+        let longPressTimer = null;
+        document.addEventListener('touchstart', e => {
+            // Don't trigger on synth shapes or buttons
+            if (e.target.closest('.trace, button, .panel-btn')) return;
+            longPressTimer = setTimeout(() => {
+                togglePanels();
+                longPressTimer = null;
+            }, 500);
+        }, { passive: true });
+        document.addEventListener('touchend', () => {
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        });
+        document.addEventListener('touchmove', () => {
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        });
+
+        // --- Full notes (12-TET) toggle ---
+        // 31 chromatic notes across ~2.5 octaves: C3 to F5
+        const chromaticFreqs = [];
+        const baseC3 = 130.81;
+        for (let i = 0; i < 31; i++) {
+            chromaticFreqs.push(baseC3 * Math.pow(2, i / 12));
+        }
+        // Store original 31-TET freqs
+        const quarterFreqs = allElements.map(e => e.freq);
+
+        let fullMode = false;
+        const btnFull = document.getElementById('btn-full');
+        btnFull.addEventListener('click', () => {
+            fullMode = !fullMode;
+            btnFull.classList.toggle('on', fullMode);
+            // Swap frequencies on all elements
+            allElements.forEach((e, i) => {
+                e.freq = fullMode ? chromaticFreqs[i] : quarterFreqs[i];
+            });
+        });
+
+        // --- Percussion: synthesized kick and snare ---
+        function playKick() {
+            initAudio();
+            const out = getDrumOutput();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.15);
+            gain.gain.setValueAtTime(1.6, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+            osc.connect(gain); gain.connect(masterGain);
+            if (drumEcho) gain.connect(out);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        function playSnare() {
+            initAudio();
+            const out = getDrumOutput();
+            const bufSize = audioCtx.sampleRate * 0.1;
+            const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buf;
+            const noiseGain = audioCtx.createGain();
+            noiseGain.gain.setValueAtTime(1.0, audioCtx.currentTime);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+            const osc = audioCtx.createOscillator();
+            const oscGain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+            oscGain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+            oscGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+            noise.connect(noiseGain); noiseGain.connect(masterGain);
+            osc.connect(oscGain); oscGain.connect(masterGain);
+            if (drumEcho) { noiseGain.connect(out); oscGain.connect(out); }
+            noise.start(); noise.stop(audioCtx.currentTime + 0.12);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.08);
+        }
+
+        function playHihat() {
+            initAudio();
+            const out = getDrumOutput();
+            const bufSize = audioCtx.sampleRate * 0.05;
+            const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buf;
+            const hp = audioCtx.createBiquadFilter();
+            hp.type = 'highpass';
+            hp.frequency.value = 7000;
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(2.8, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.07);
+            noise.connect(hp); hp.connect(gain); gain.connect(masterGain);
+            if (drumEcho) gain.connect(out);
+            noise.start(); noise.stop(audioCtx.currentTime + 0.07);
+        }
+
+        function playTom() {
+            initAudio();
+            const out = getDrumOutput();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.2);
+            gain.gain.setValueAtTime(1.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+            osc.connect(gain); gain.connect(masterGain);
+            if (drumEcho) gain.connect(out);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+        }
+
+        let kickMode = false, snareMode = false, hihatMode = false, tomMode = false;
+        const btnKick = document.getElementById('btn-kick');
+        const btnSnare = document.getElementById('btn-snare');
+        const btnHihat = document.getElementById('btn-hihat');
+        const btnTom = document.getElementById('btn-tom');
+        btnKick.addEventListener('click', () => { kickMode = !kickMode; btnKick.classList.toggle('on', kickMode); });
+        btnSnare.addEventListener('click', () => { snareMode = !snareMode; btnSnare.classList.toggle('on', snareMode); });
+        btnHihat.addEventListener('click', () => { hihatMode = !hihatMode; btnHihat.classList.toggle('on', hihatMode); });
+        btnTom.addEventListener('click', () => { tomMode = !tomMode; btnTom.classList.toggle('on', tomMode); });
+
+        // --- ADSR buttons (synth only) ---
+        const btnAttack = document.getElementById('btn-attack');
+        const btnSustain = document.getElementById('btn-sustain');
+        const btnDecay = document.getElementById('btn-decay');
+        const btnRelease = document.getElementById('btn-release');
+
+        function cycleADSR(current) {
+            // 0, +1, +2 then loop
+            if (current >= 2) return 0;
+            return current + 1;
+        }
+        function adsrLabel(prefix, val) {
+            if (val === 0) return prefix + '0';
+            return prefix + (val > 0 ? '+' + val : val);
+        }
+
+        btnAttack.addEventListener('click', () => {
+            attackShift = cycleADSR(attackShift);
+            btnAttack.textContent = adsrLabel('A', attackShift);
+            btnAttack.classList.toggle('on', attackShift !== 0);
+        });
+        btnSustain.addEventListener('click', () => {
+            sustainShift = cycleADSR(sustainShift);
+            btnSustain.textContent = adsrLabel('S', sustainShift);
+            btnSustain.classList.toggle('on', sustainShift !== 0);
+        });
+        btnDecay.addEventListener('click', () => {
+            decayShift = cycleADSR(decayShift);
+            btnDecay.textContent = adsrLabel('D', decayShift);
+            btnDecay.classList.toggle('on', decayShift !== 0);
+        });
+        btnRelease.addEventListener('click', () => {
+            releaseShift = cycleADSR(releaseShift);
+            btnRelease.textContent = adsrLabel('R', releaseShift);
+            btnRelease.classList.toggle('on', releaseShift !== 0);
+        });
+
+        // --- Drum echo button ---
+        const btnEcho = document.getElementById('btn-echo');
+        btnEcho.addEventListener('click', () => {
+            drumEcho = !drumEcho;
+            btnEcho.classList.toggle('on', drumEcho);
+            if (drumEcho) getDrumOutput(); // init delay node
+        });
+
+        // --- Tempo buttons ---
+        let tempoShift = 0; // -4 to +4
+        let tempo = 200; // base ms per step
+        const btnTempoUp = document.getElementById('btn-tempo-up');
+        const btnTempoDown = document.getElementById('btn-tempo-down');
+
+        function updateTempoLabels() {
+            btnTempoUp.textContent = tempoShift > 0 ? 'T+' + tempoShift : 'T0';
+            btnTempoDown.textContent = tempoShift < 0 ? 'T' + tempoShift : 'T0';
+            btnTempoUp.classList.toggle('on', tempoShift > 0);
+            btnTempoDown.classList.toggle('on', tempoShift < 0);
+        }
+
+        function restartSequencerWithTempo() {
+            if (!isPlaying) return;
+            clearInterval(sequenceInterval);
+            sequenceInterval = setInterval(sequencerTick, tempo);
+        }
+
+        btnTempoUp.addEventListener('click', () => {
+            if (tempoShift >= 16) return;
+            tempoShift++;
+            tempo = 200 - (tempoShift * 8);
+            updateTempoLabels();
+            restartSequencerWithTempo();
+        });
+        btnTempoDown.addEventListener('click', () => {
+            if (tempoShift <= -16) return;
+            tempoShift--;
+            tempo = 200 - (tempoShift * 8);
+            updateTempoLabels();
+            restartSequencerWithTempo();
+        });
+        updateTempoLabels();
+
+        // --- Drum pattern shift buttons ---
+        let topShift = 0, botShift = 0;
+        const btnShiftTop = document.getElementById('btn-shift-top');
+        const btnShiftBot = document.getElementById('btn-shift-bot');
+
+        btnShiftTop.addEventListener('click', () => {
+            topShift = (topShift + 1) % 4;
+            btnShiftTop.textContent = 'S' + topShift;
+            btnShiftTop.classList.toggle('on', topShift > 0);
+        });
+        btnShiftBot.addEventListener('click', () => {
+            botShift = (botShift + 1) % 4;
+            btnShiftBot.textContent = 'S' + botShift;
+            btnShiftBot.classList.toggle('on', botShift > 0);
+        });
+
+        // --- Octave shift buttons (capped at +8 / -8) ---
+        let octaveShift = 0;
+        const btnOctUp = document.getElementById('btn-oct-up');
+        const btnOctDown = document.getElementById('btn-oct-down');
+
+        function updateOctaveLabels() {
+            btnOctUp.textContent = octaveShift > 0 ? '+' + octaveShift : '+0';
+            btnOctDown.textContent = octaveShift < 0 ? octaveShift.toString() : '-0';
+            btnOctUp.classList.toggle('on', octaveShift > 0);
+            btnOctDown.classList.toggle('on', octaveShift < 0);
+        }
+        updateOctaveLabels();
+
+        btnOctUp.addEventListener('click', () => {
+            if (octaveShift >= 8) return;
+            octaveShift++;
+            allElements.forEach(e => { e.freq *= 2; });
+            quarterFreqs.forEach((f, i) => { quarterFreqs[i] = f * 2; });
+            chromaticFreqs.forEach((f, i) => { chromaticFreqs[i] = f * 2; });
+            updateOctaveLabels();
+        });
+        btnOctDown.addEventListener('click', () => {
+            if (octaveShift <= -8) return;
+            octaveShift--;
+            allElements.forEach(e => { e.freq /= 2; });
+            quarterFreqs.forEach((f, i) => { quarterFreqs[i] = f / 2; });
+            chromaticFreqs.forEach((f, i) => { chromaticFreqs[i] = f / 2; });
+            updateOctaveLabels();
+        });
+
+        // --- Tone clusters toggle ---
+        let clusterMode = false;
+        const btnCluster = document.getElementById('btn-cluster');
+        btnCluster.addEventListener('click', () => {
+            clusterMode = !clusterMode;
+            btnCluster.classList.toggle('on', clusterMode);
+        });
+
+        // --- Double notes (x2) button ---
+        let doubleMode = false;
+        const btnDouble = document.getElementById('btn-double');
+        btnDouble.addEventListener('click', () => {
+            doubleMode = !doubleMode;
+            btnDouble.classList.toggle('on', doubleMode);
+        });
+
+        // --- Triple random (x3) button ---
+        let tripleMode = false;
+        const btnTriple = document.getElementById('btn-triple');
+        btnTriple.addEventListener('click', () => {
+            tripleMode = !tripleMode;
+            btnTriple.classList.toggle('on', tripleMode);
+            // Rebuild sequences immediately so toggling mid-play works
+            if (tripleMode) {
+                const pool = shuffle([...allElements, ...allElements, ...allElements]);
+                tripleSequence = [];
+                for (let i = 0; i < 31; i++) {
+                    tripleSequence.push([pool[i*3], pool[i*3+1], pool[i*3+2]]);
+                }
+            } else {
+                sequenceOrder = shuffle(allElements);
+            }
+            step = 0;
+        });
+
+        // Override triggerElement to support double + cluster modes
+        const _origTrigger = triggerElement;
+        triggerElement = function(el, freq) {
+            _origTrigger(el, freq);
+
+            if (clusterMode) {
+                // Play 2 adjacent tones above and below (tight cluster of 3)
+                const idx = allElements.findIndex(e => e.id === el.id);
+                const below = allElements[(idx - 1 + allElements.length) % allElements.length];
+                const above = allElements[(idx + 1) % allElements.length];
+                playNote(below.freq);
+                playNote(above.freq);
+                // Light up the cluster neighbors
+                const elB = document.getElementById(below.id);
+                const elA = document.getElementById(above.id);
+                if (elB) _origTrigger(elB, below.freq);
+                if (elA) _origTrigger(elA, above.freq);
+            }
+
+            if (doubleMode) {
+                const others = allElements.filter(e => e.id !== el.id);
+                const pick = others[Math.floor(Math.random() * others.length)];
+                const el2 = document.getElementById(pick.id);
+                if (el2) _origTrigger(el2, pick.freq);
+            }
+        };
+
+        // ===================================================================
+        // VOXEL EASTER EGG
+        // ===================================================================
+        const eggEl = document.getElementById('egg');
+        let synthMuted = false;
+
+        function toggleEgg() {
+            synthMuted = !synthMuted;
+            eggEl.classList.toggle('visible', synthMuted);
+            eggEl.classList.toggle('muted', synthMuted);
+        }
+
+        document.getElementById('egg-zone').addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleEgg();
+        });
+        eggEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleEgg();
+        });
+
+        // Reverb convolver for muted saw mode
+        let reverbNode = null;
+        function getReverbNode() {
+            if (reverbNode) return reverbNode;
+            initAudio();
+            const len = audioCtx.sampleRate * 3.5;
+            const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
+            for (let ch = 0; ch < 2; ch++) {
+                const d = buf.getChannelData(ch);
+                for (let i = 0; i < len; i++) {
+                    d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.8);
+                }
+            }
+            reverbNode = audioCtx.createConvolver();
+            reverbNode.buffer = buf;
+            reverbNode.connect(masterGain);
+            return reverbNode;
+        }
+
+        function playSawReverb(frequency) {
+            initAudio();
+            const env = getADSR();
+            const totalDur = env.attack + env.sustain + env.decay + env.release;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const reverb = getReverbNode();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+            const t = audioCtx.currentTime;
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.6, t + env.attack);
+            gain.gain.setValueAtTime(0.6, t + env.attack + env.sustain);
+            gain.gain.linearRampToValueAtTime(0.25, t + env.attack + env.sustain + env.decay);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + totalDur);
+            osc.connect(gain);
+            gain.connect(masterGain);
+            gain.connect(reverb);
+            osc.start();
+            osc.stop(t + totalDur);
+        }
+
+        // Patch playNote to respect mute — play saw+reverb when muted
+        const _synthPlayNote = playNote;
+        playNote = function(frequency, type = 'square') {
+            if (synthMuted) {
+                playSawReverb(frequency);
+                return;
+            }
+            _synthPlayNote(frequency, type);
+        };
+
+        // ===================================================================
+        // THEREMIN / MODULATION / PITCH BEND
+        // Only active while sequencer is playing.
+        // ===================================================================
+
+        const svgEl = document.getElementById('synth-svg');
+
+        // --- Get SVG center in screen coords ---
+        function getSvgCenter() {
+            const r = svgEl.getBoundingClientRect();
+            // Shape content spans x=90-470 in viewBox "80 125 400 320"
+            // Shape center in viewBox = 280, viewBox starts at 80, width 400
+            // Normalized shape center = (280-80)/400 = 0.5 — that's correct
+            // But letter mass is slightly right-heavy, shift center 5% right
+            return { x: r.left + r.width * 0.58, y: r.top + r.height / 2, w: r.width, h: r.height };
+        }
+
+        // --- Theremin: continuous sine oscillator ---
+        let thereminOsc = null, thereminGain = null, thereminFilter = null;
+
+        function startTheremin() {
+            if (thereminOsc) return;
+            initAudio();
+            thereminOsc = audioCtx.createOscillator();
+            thereminOsc.type = 'sine';
+            thereminOsc.frequency.value = 440;
+            thereminFilter = audioCtx.createBiquadFilter();
+            thereminFilter.type = 'lowpass';
+            thereminFilter.frequency.value = 2000;
+            thereminGain = audioCtx.createGain();
+            thereminGain.gain.value = 0;
+            thereminOsc.connect(thereminFilter);
+            thereminFilter.connect(thereminGain);
+            thereminGain.connect(masterGain);
+            thereminOsc.start();
+        }
+
+        function stopTheremin() {
+            if (!thereminOsc) return;
+            thereminOsc.stop();
+            thereminOsc = null;
+            thereminGain = null;
+            thereminFilter = null;
+        }
+
+        function updateTheremin(nx, ny) {
+            // nx: -1 (left) to +1 (right) = filter cutoff
+            // ny: -1 (top) to +1 (bottom) = pitch (top=high, bottom=low)
+            if (!thereminOsc || !isPlaying) return;
+            const freq = 440 * Math.pow(2, -ny * 2); // 2 octave range, one octave higher
+            const cutoff = 500 + (1 + nx) * 3000; // 500-6500 Hz
+            const vol = Math.max(0, 1 - Math.abs(nx) * 0.3 - Math.abs(ny) * 0.3) * 1.5;
+            thereminOsc.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.03);
+            thereminFilter.frequency.setTargetAtTime(cutoff, audioCtx.currentTime, 0.03);
+            thereminGain.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.03);
+        }
+
+        function silenceTheremin() {
+            if (thereminGain) thereminGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+        }
+
+        // --- Modulation: affects main synth via detune + filter ---
+        let modFilter = null;
+        let modActive = false;
+
+        function initModulation() {
+            if (modFilter) return;
+            initAudio();
+            // Insert a filter between masterGain and destination
+            modFilter = audioCtx.createBiquadFilter();
+            modFilter.type = 'lowpass';
+            modFilter.frequency.value = 20000;
+            modFilter.Q.value = 1;
+            masterGain.disconnect();
+            masterGain.connect(modFilter);
+            modFilter.connect(audioCtx.destination);
+        }
+
+        function updateModulation(nx, ny) {
+            if (!modFilter || !isPlaying) return;
+            // X axis: filter cutoff sweep (left=dark, right=bright)
+            const cutoff = 400 + (1 + nx) * 8000; // 400-16400
+            // Y axis: resonance (top=high Q, bottom=low Q)
+            const q = Math.max(0.5, (1 - ny) * 8); // 0.5-16
+            modFilter.frequency.setTargetAtTime(cutoff, audioCtx.currentTime, 0.03);
+            modFilter.Q.setTargetAtTime(q, audioCtx.currentTime, 0.03);
+        }
+
+        function resetModulation() {
+            if (!modFilter) return;
+            modFilter.frequency.setTargetAtTime(20000, audioCtx.currentTime, 0.1);
+            modFilter.Q.setTargetAtTime(1, audioCtx.currentTime, 0.1);
+        }
+
+        // --- Pitch bend: shifts all playing frequencies ---
+        let pitchBendAmount = 0; // semitones
+
+        function applyPitchBend(delta) {
+            if (!isPlaying) return;
+            pitchBendAmount = Math.max(-24, Math.min(24, pitchBendAmount + delta));
+            // pitchBendAmount applied in playNote won't affect already-playing notes,
+            // but we store it for the override
+        }
+
+        function resetPitchBend() {
+            pitchBendAmount = 0;
+        }
+
+        // Patch playNote to apply pitch bend
+        const _origPlayNote = playNote;
+        playNote = function(frequency, type = 'square') {
+            const bent = frequency * Math.pow(2, pitchBendAmount / 12);
+            _origPlayNote(bent, type);
+        };
+
+        // ===================================================================
+        // INPUT HANDLERS
+        // ===================================================================
+
+        // Helper: get normalized position relative to SVG center (-1 to +1)
+        function getNormalized(clientX, clientY) {
+            const c = getSvgCenter();
+            return {
+                nx: Math.max(-1, Math.min(1, (clientX - c.x) / (c.w / 2))),
+                ny: Math.max(-1, Math.min(1, (clientY - c.y) / (c.h / 2)))
+            };
+        }
+
+        // --- MOUSE: hover = theremin, middle-click+hover = modulation, wheel = pitch bend ---
+        let middleDown = false;
+
+        svgEl.addEventListener('mousemove', e => {
+            if (!isPlaying) return;
+            const { nx, ny } = getNormalized(e.clientX, e.clientY);
+            if (middleDown) {
+                updateModulation(nx, ny);
+            } else {
+                if (!thereminOsc) startTheremin();
+                updateTheremin(nx, ny);
+            }
+        });
+
+        svgEl.addEventListener('mouseleave', () => {
+            silenceTheremin();
+            if (!middleDown) resetModulation();
+        });
+
+        svgEl.addEventListener('mousedown', e => {
+            if (e.button === 1) { // middle click
+                e.preventDefault();
+                middleDown = true;
+                initModulation();
+                silenceTheremin();
+            }
+        });
+
+        document.addEventListener('mouseup', e => {
+            if (e.button === 1) {
+                middleDown = false;
+                resetModulation();
+            }
+        });
+
+        svgEl.addEventListener('wheel', e => {
+            if (!isPlaying) return;
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -3 : 3;
+            applyPitchBend(delta);
+        }, { passive: false });
+
+        // Reset pitch bend when wheel stops (after 300ms idle)
+        let wheelResetTimer = null;
+        svgEl.addEventListener('wheel', () => {
+            clearTimeout(wheelResetTimer);
+            wheelResetTimer = setTimeout(resetPitchBend, 800);
+        });
+
+        // --- TOUCH: 1 finger = theremin, 2 fingers = modulation, 3 fingers = pitch bend ---
+        let currentTouches = 0;
+
+        svgEl.addEventListener('touchstart', e => {
+            if (!isPlaying) return;
+            currentTouches = e.touches.length;
+            if (currentTouches === 1) {
+                startTheremin();
+            } else if (currentTouches === 2) {
+                silenceTheremin();
+                initModulation();
+            } else if (currentTouches >= 3) {
+                silenceTheremin();
+                resetModulation();
+            }
+        }, { passive: true });
+
+        svgEl.addEventListener('touchmove', e => {
+            if (!isPlaying) return;
+            currentTouches = e.touches.length;
+
+            if (currentTouches === 1) {
+                const t = e.touches[0];
+                const { nx, ny } = getNormalized(t.clientX, t.clientY);
+                updateTheremin(nx, ny);
+            } else if (currentTouches === 2) {
+                // Average of 2 touch points
+                const ax = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                const ay = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                const { nx, ny } = getNormalized(ax, ay);
+                updateModulation(nx, ny);
+            } else if (currentTouches >= 3) {
+                // Use vertical movement of first touch as pitch bend
+                const { ny } = getNormalized(e.touches[0].clientX, e.touches[0].clientY);
+                pitchBendAmount = -ny * 12; // full octave range
+            }
+        }, { passive: true });
+
+        svgEl.addEventListener('touchend', e => {
+            currentTouches = e.touches.length;
+            if (currentTouches === 0) {
+                silenceTheremin();
+                resetModulation();
+                resetPitchBend();
+            }
+        });
+
+        // Stop theremin when sequencer stops
+        const _origToggle = toggleSequence;
+        toggleSequence = function() {
+            _origToggle();
+            if (!isPlaying) {
+                stopTheremin();
+                resetModulation();
+                resetPitchBend();
+            }
+        };
+        // Re-bind the button
+        playBtn.removeEventListener('click', _origToggle);
+        playBtn.addEventListener('click', toggleSequence);
+
+        // ===================================================================
+        // ORB TRAIL
+        // ===================================================================
+        function spawnOrb(x, y) {
+            const orb = document.createElement('div');
+            orb.className = 'orb';
+            orb.style.left = (x - 8) + 'px';
+            orb.style.top = (y - 8) + 'px';
+            document.body.appendChild(orb);
+            requestAnimationFrame(() => orb.classList.add('fade'));
+            setTimeout(() => orb.remove(), 1400);
+        }
+
+        let orbThrottle = 0;
+        function maybeSpawnOrb(x, y) {
+            const now = Date.now();
+            if (now - orbThrottle < 16) return; // ~60fps
+            orbThrottle = now;
+            spawnOrb(x, y);
+        }
+
+        // Mouse orb trail on SVG
+        svgEl.addEventListener('mousemove', e => {
+            maybeSpawnOrb(e.clientX, e.clientY);
+        });
+
+        // Touch orb trail on SVG
+        svgEl.addEventListener('touchmove', e => {
+            for (let i = 0; i < e.touches.length; i++) {
+                maybeSpawnOrb(e.touches[i].clientX, e.touches[i].clientY);
+            }
+        }, { passive: true });
+
+    </script>
+</body>
+</html>
