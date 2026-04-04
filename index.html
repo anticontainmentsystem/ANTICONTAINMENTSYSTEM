@@ -26,7 +26,7 @@
         h1 { margin: 0; font-size: 2rem; font-weight: normal; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
         p { margin: 10px 0 0 0; font-size: 0.9rem; color: #888; }
         #app-container { position: relative; display: flex; flex-direction: column; align-items: center; }
-        svg { width: 80vmin; height: 80vmin; max-width: 500px; max-height: 500px; overflow: visible; }
+        svg { width: 80vmin; height: 80vmin; max-width: 500px; max-height: 500px; overflow: visible; touch-action: none; }
         .trace {
             fill: var(--trace-idle);
             cursor: pointer;
@@ -1099,7 +1099,9 @@
         // --- TOUCH: 1 finger = theremin, 2 fingers = modulation, 3 fingers = pitch bend ---
         let currentTouches = 0;
 
+        // Prevent pinch-to-zoom and scroll on the SVG so multi-touch works
         svgEl.addEventListener('touchstart', e => {
+            if (e.touches.length > 1) e.preventDefault();
             if (!isPlaying) return;
             currentTouches = e.touches.length;
             if (currentTouches === 1) {
@@ -1111,9 +1113,10 @@
                 silenceTheremin();
                 resetModulation();
             }
-        }, { passive: true });
+        }, { passive: false });
 
         svgEl.addEventListener('touchmove', e => {
+            e.preventDefault(); // prevent scroll/zoom during all touch moves on SVG
             if (!isPlaying) return;
             currentTouches = e.touches.length;
 
@@ -1122,17 +1125,15 @@
                 const { nx, ny } = getNormalized(t.clientX, t.clientY);
                 updateTheremin(nx, ny);
             } else if (currentTouches === 2) {
-                // Average of 2 touch points
                 const ax = (e.touches[0].clientX + e.touches[1].clientX) / 2;
                 const ay = (e.touches[0].clientY + e.touches[1].clientY) / 2;
                 const { nx, ny } = getNormalized(ax, ay);
                 updateModulation(nx, ny);
             } else if (currentTouches >= 3) {
-                // Use vertical movement of first touch as pitch bend
                 const { ny } = getNormalized(e.touches[0].clientX, e.touches[0].clientY);
-                pitchBendAmount = -ny * 12; // full octave range
+                pitchBendAmount = -ny * 24; // 2 octave range
             }
-        }, { passive: true });
+        }, { passive: false });
 
         svgEl.addEventListener('touchend', e => {
             currentTouches = e.touches.length;
@@ -1141,7 +1142,7 @@
                 resetModulation();
                 resetPitchBend();
             }
-        });
+        }, { passive: true });
 
         // Stop theremin when sequencer stops
         const _origToggle = toggleSequence;
